@@ -23,6 +23,7 @@ def OpenAICompletion(
     model_name: str,
     max_tokens: Optional[int] = 216,
     temperature: Optional[float] = 1.0,
+    **kwargs
 ) -> Callable:
     """Create a function that will call the OpenAI completion API.
 
@@ -58,6 +59,9 @@ def OpenAICompletion(
             f"The model {model_name} requested is not available. Only the completion and chat completion models are available for OpenAI."
         )
 
+    if not kwargs:
+        kwargs = {"stop_max_attempt_number":1}
+
     def generate(prompt: str, *, samples=1, stop_at=None, is_in=None, type=None):
         import tiktoken
 
@@ -89,9 +93,7 @@ def OpenAICompletion(
             stop_at,
             mask,
             samples,
-            stop_max_attempt_number = 3,
-            wait_exponential_multiplier = 1000,
-            wait_exponential_max = 10000,
+            **kwargs
         )
 
         if samples == 1:
@@ -142,9 +144,7 @@ def OpenAICompletion(
                     None,
                     mask,
                     samples,
-                    stop_max_attempt_number=3,
-                    wait_exponential_multiplier=1000,
-                    wait_exponential_max=10000,
+                    **kwargs
                 )
                 decoded.append(extract_choice(response["choices"][0]))
                 prompt = prompt + "".join(decoded)
@@ -351,15 +351,11 @@ def call_completion_api(
     stop_sequences: Tuple[str],
     logit_bias: Dict[str, int],
     num_samples: int,
-    stop_max_attempt_number: int,
-    wait_exponential_multiplier: int,
-    wait_exponential_max: int,
+    **kwargs
 ):
     @retry(
         retry_on_exception=retry_if_connection_error,
-        stop_max_attempt_number=stop_max_attempt_number,
-        wait_exponential_multiplier=wait_exponential_multiplier,
-        wait_exponential_max=wait_exponential_max,
+        **kwargs
     )
     @error_handler
     @cache
@@ -390,15 +386,11 @@ def call_chat_completion_api(
     stop_sequences: Tuple[str],
     logit_bias: Dict[str, int],
     num_samples: int,
-    stop_max_attempt_number: int,
-    wait_exponential_multiplier: int,
-    wait_exponential_max: int,
+    **kwargs
 ):
     @retry(
         retry_on_exception=retry_if_connection_error,
-        stop_max_attempt_number=stop_max_attempt_number,
-        wait_exponential_multiplier=wait_exponential_multiplier,
-        wait_exponential_max=wait_exponential_max,
+        **kwargs
     )
     @error_handler
     @cache
