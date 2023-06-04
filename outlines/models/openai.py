@@ -1,6 +1,7 @@
 """Integration with OpenAI's API."""
 import base64
 import os
+from retrying import retry
 import warnings
 from io import BytesIO
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -88,6 +89,9 @@ def OpenAICompletion(
             stop_at,
             mask,
             samples,
+            stop_max_attempt_number = 3,
+            wait_exponential_multiplier = 1000,
+            wait_exponential_max = 10000,
         )
 
         if samples == 1:
@@ -138,6 +142,9 @@ def OpenAICompletion(
                     None,
                     mask,
                     samples,
+                    stop_max_attempt_number=3,
+                    wait_exponential_multiplier=1000,
+                    wait_exponential_max=10000,
                 )
                 decoded.append(extract_choice(response["choices"][0]))
                 prompt = prompt + "".join(decoded)
@@ -332,9 +339,10 @@ def error_handler(api_call_fn: Callable) -> Callable:
 
     return call
 
+def retry_if_connection_error(exception):
+    return isinstance(exception, OSError)
 
-@error_handler
-@cache
+
 def call_completion_api(
     model: str,
     prompt: str,
@@ -343,20 +351,33 @@ def call_completion_api(
     stop_sequences: Tuple[str],
     logit_bias: Dict[str, int],
     num_samples: int,
+    stop_max_attempt_number: int,
+    wait_exponential_multiplier: int,
+    wait_exponential_max: int,
 ):
-    import openai
-
-    response = openai.Completion.create(
-        engine=model,
-        prompt=prompt,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        stop=stop_sequences,
-        logit_bias=logit_bias,
-        n=num_samples,
+    @retry(
+        retry_on_exception=retry_if_connection_error,
+        stop_max_attempt_number=stop_max_attempt_number,
+        wait_exponential_multiplier=wait_exponential_multiplier,
+        wait_exponential_max=wait_exponential_max,
     )
+    @error_handler
+    @cache
+    def inner_call_completion_api():
+        import openai
 
-    return response
+        response = openai.Completion.create(
+            engine=model,
+            prompt=prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stop=stop_sequences,
+            logit_bias=logit_bias,
+            n=num_samples,
+        )
+        return response
+
+    return inner_call_completion_api()
 
 
 @error_handler
@@ -369,17 +390,30 @@ def call_chat_completion_api(
     stop_sequences: Tuple[str],
     logit_bias: Dict[str, int],
     num_samples: int,
+    stop_max_attempt_number: int,
+    wait_exponential_multiplier: int,
+    wait_exponential_max: int,
 ):
-    import openai
-
-    response = openai.ChatCompletion.create(
-        model=model,
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        stop=stop_sequences,
-        logit_bias=logit_bias,
-        n=num_samples,
+    @retry(
+        retry_on_exception=retry_if_connection_error,
+        stop_max_attempt_number=stop_max_attempt_number,
+        wait_exponential_multiplier=wait_exponential_multiplier,
+        wait_exponential_max=wait_exponential_max,
     )
+    @error_handler
+    @cache
+    def inner_chat_completion_api():
+        import openai
 
-    return response
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stop=stop_sequences,
+            logit_bias=logit_bias,
+            n=num_samples,
+        )
+        return response
+
+    return inner_chat_completion_api()
